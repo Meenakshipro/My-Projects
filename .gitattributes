@@ -1,0 +1,4 @@
+Project-2/Traffic_Violations.csv filter=lfs diff=lfs merge=lfs -text
+Project-2/traffic_violations_clean.csv filter=lfs diff=lfs merge=lfs -text
+Project-2/traffic_violations.db filter=lfs diff=lfs merge=lfs -text
+Project-2/traffic_violations.cache.parquet filter=lfs diff=lfs merge=lfs -text
