@@ -1,0 +1,52 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="42" y1="36" x2="470" y2="484" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0D5F53"/>
+      <stop offset="1" stop-color="#123D46"/>
+    </linearGradient>
+    <linearGradient id="mShape" x1="90" y1="110" x2="426" y2="398" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EAFEF5"/>
+      <stop offset="0.35" stop-color="#A8E6C9"/>
+      <stop offset="1" stop-color="#4AD39E"/>
+    </linearGradient>
+    <linearGradient id="mCenter" x1="155" y1="140" x2="355" y2="330" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFBE8"/>
+      <stop offset="0.45" stop-color="#F6D571"/>
+      <stop offset="1" stop-color="#E29A1F"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#062C2F" flood-opacity="0.38"/>
+    </filter>
+  </defs>
+
+  <rect x="22" y="22" width="468" height="468" rx="92" fill="url(#bg)"/>
+
+  <g opacity="0.15" stroke="#F5FFF9" stroke-width="3" stroke-linecap="round">
+    <path d="M120 104V410"/>
+    <path d="M190 104V410"/>
+    <path d="M256 104V410"/>
+    <path d="M322 104V410"/>
+    <path d="M392 104V410"/>
+    <path d="M92 170H420"/>
+    <path d="M92 256H420"/>
+    <path d="M92 342H420"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <path d="M96 386V118L168 250L256 158L344 250L416 118V386H358V232L296 320H216L154 232V386H96Z" fill="url(#mShape)"/>
+  </g>
+
+  <path d="M157 342V186L213 266L256 208L299 266L355 186V342H301V246L256 310L211 246V342H157Z" fill="url(#mCenter)"/>
+
+  <path d="M125 126C149 102 178 90 213 90" stroke="#F8FFF9" stroke-width="7" stroke-linecap="round" opacity="0.28"/>
+
+  <g transform="translate(343 120) rotate(12)">
+    <circle cx="0" cy="0" r="44" fill="#F4CF67"/>
+    <circle cx="0" cy="0" r="32" fill="#E7DFC7" opacity="0.18"/>
+    <g fill="#0F3F45">
+      <path d="M-18 -18L-8 -8L0 -24L8 -8L18 -18L12 0L18 18L8 8L0 24L-8 8L-18 18L-12 0L-18 -18Z" opacity="0.8"/>
+      <path d="M-12 0H12"/>
+      <path d="M0 -12V12"/>
+    </g>
+  </g>
+</svg>

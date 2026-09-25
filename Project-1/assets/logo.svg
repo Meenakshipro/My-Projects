@@ -1,0 +1,73 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="badge" x1="40" y1="40" x2="472" y2="472" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3a1d7a"/>
+      <stop offset="0.5" stop-color="#5a27c0"/>
+      <stop offset="1" stop-color="#2a1560"/>
+    </linearGradient>
+    <linearGradient id="mGold" x1="150" y1="120" x2="380" y2="392" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff7d6"/>
+      <stop offset="0.25" stop-color="#f8dc86"/>
+      <stop offset="0.5" stop-color="#e9b94a"/>
+      <stop offset="0.72" stop-color="#f6d879"/>
+      <stop offset="1" stop-color="#c78e26"/>
+    </linearGradient>
+    <linearGradient id="mGloss" x1="256" y1="120" x2="256" y2="392" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff" stop-opacity="0.6"/>
+      <stop offset="0.42" stop-color="#ffffff" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="swoosh" x1="110" y1="370" x2="404" y2="250" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#17c3d6"/>
+      <stop offset="1" stop-color="#7c5cff"/>
+    </linearGradient>
+    <radialGradient id="ball" cx="0.35" cy="0.28" r="0.95">
+      <stop stop-color="#8a5a2b"/>
+      <stop offset="0.55" stop-color="#6f4420"/>
+      <stop offset="1" stop-color="#4d2c12"/>
+    </radialGradient>
+    <filter id="soft" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="16" stdDeviation="16" flood-color="#0a0733" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <!-- Badge -->
+  <rect x="24" y="24" width="464" height="464" rx="108" fill="url(#badge)"/>
+
+  <!-- Field yard lines -->
+  <g opacity="0.10" stroke="#eaf2ff" stroke-width="4" stroke-linecap="round">
+    <path d="M120 110V402"/>
+    <path d="M190 110V402"/>
+    <path d="M256 110V402"/>
+    <path d="M322 110V402"/>
+    <path d="M392 110V402"/>
+  </g>
+
+  <!-- Dynamic swoosh under the M -->
+  <path d="M104 360 C 190 300, 300 300, 404 250 C 360 322, 250 372, 104 388 Z"
+        fill="url(#swoosh)" opacity="0.85" filter="url(#soft)"/>
+
+  <!-- The sleek monogram M (metallic gold with gloss) -->
+  <g filter="url(#soft)">
+    <path d="M94 392V124H150L256 300L362 124H418V392H362V214L256 250L150 214V392H94Z"
+          fill="url(#mGold)" stroke="#8a5e12" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M94 392V124H150L256 300L362 124H418V392H362V214L256 250L150 214V392H94Z"
+          fill="url(#mGloss)"/>
+  </g>
+
+  <!-- Gridiron (American) football tucked into the top-right of the M -->
+  <g transform="translate(360 126) rotate(-32)" filter="url(#soft)">
+    <ellipse cx="0" cy="0" rx="58" ry="34" fill="url(#ball)" stroke="#2b1e78" stroke-width="4"/>
+    <!-- end white tips -->
+    <path d="M-58 0 a20 12 0 0 1 12 -9 a20 12 0 0 1 0 18 a20 12 0 0 1 -12 -9Z" fill="#f4f0ff" opacity="0.9"/>
+    <path d="M58 0 a20 12 0 0 0 -12 -9 a20 12 0 0 0 0 18 a20 12 0 0 0 12 -9Z" fill="#f4f0ff" opacity="0.9"/>
+    <!-- center lace line + laces -->
+    <line x1="-26" y1="0" x2="26" y2="0" stroke="#f7ecd0" stroke-width="5" stroke-linecap="round"/>
+    <g stroke="#f7ecd0" stroke-width="5" stroke-linecap="round">
+      <line x1="-18" y1="-9" x2="-18" y2="9"/>
+      <line x1="-6"  y1="-9" x2="-6"  y2="9"/>
+      <line x1="6"   y1="-9" x2="6"   y2="9"/>
+      <line x1="18"  y1="-9" x2="18"  y2="9"/>
+    </g>
+  </g>
+</svg>
