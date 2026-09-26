@@ -34,12 +34,10 @@ pip install -r requirements.txt
 Sign up at [console.sportradar.com](https://console.sportradar.com), create an
 application, and add the NCAA Football trial to it. Copy the key it gives you.
 
-**3. Add your key to `config.py`:**
-```python
-API_KEY = "your-real-key-here"
-```
-Never commit a real key to a public repository — keep `config.py` private, or use
-an environment variable in place of the literal string if sharing this project.
+**3. Configure your API key:**
+Save the key in `API-KEY.txt` in the project folder, or set the
+`SPORTRADAR_API_KEY` environment variable before running the data script.
+Never commit a real key or `API-KEY.txt` to a public repository.
 
 **4. Download the data:**
 ```
