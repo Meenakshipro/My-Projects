@@ -66,6 +66,7 @@ Command:
 
 Explain what this single command does:
 - Reads raw CSV files.
+- Runs EDA before and after cleaning, saving stats and plots to artifacts/reports/eda/.
 - Cleans missing values and date-time fields.
 - Merges all tables.
 - Creates new engineered features.
@@ -77,6 +78,7 @@ Explain what this single command does:
 
 Students must check these outputs exist:
 - data/processed/rapido_processed.csv
+- artifacts/reports/eda/ (before_cleaning and after_cleaning plots and summaries)
 - artifacts/models/ride_outcome_model.joblib
 - artifacts/models/fare_model.joblib
 - artifacts/models/customer_cancel_model.joblib

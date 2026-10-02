@@ -7,9 +7,10 @@ End-to-end ML project for ride outcome prediction, fare forecasting, cancellatio
 - `Project-files/`: Raw source datasets
 - `src/config.py`: Central paths and model target definitions
 - `src/data_pipeline.py`: Loads and merges source tables, cleans data, and creates features and targets
+- `src/eda.py`: Exploratory data analysis (before and after cleaning); saves statistics and plots to `artifacts/reports/eda/`
 - `src/train_models.py`: Trains and evaluates the four model pipelines
 - `src/sql_setup.py`: Exports the processed dataset to SQLite
-- `src/run_pipeline.py`: Runs model training and SQLite export
+- `src/run_pipeline.py`: Runs EDA, model training, and SQLite export
 - `data/processed/`: Processed dataset outputs
 - `artifacts/models/`: Trained model files (`.joblib`)
 - `artifacts/reports/`: Evaluation metrics and reports
@@ -33,11 +34,20 @@ python -m src.run_pipeline
 ```
 
 This command does all of the following:
+- Runs EDA (before and after cleaning) and saves statistics and plots to `artifacts/reports/eda/`
 - Cleans and merges the input files
 - Builds engineered features
 - Trains 4 models
 - Saves metrics to `artifacts/reports/metrics.json`
 - Exports processed data to SQLite `sql/rapido.db`
+
+## Run EDA Only
+
+```powershell
+python -m src.eda
+```
+
+This generates the exploratory data analysis on its own (without training), saving the statistical summaries and plots under `artifacts/reports/eda/` for the `before_cleaning` and `after_cleaning` stages.
 
 ## Run Streamlit App
 
