@@ -20,12 +20,18 @@ from sklearn.metrics import (
     r2_score,
     roc_auc_score,
 )
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
 from src.config import MODELS_DIR, RANDOM_STATE, REPORTS_DIR, TARGETS, TEST_SIZE
 from src.data_pipeline import prepare_dataset
+
+
+def _tune(pipeline: Pipeline, param_grid: dict, X_train, y_train, scoring: str) -> Tuple[Pipeline, Dict]:
+    search = GridSearchCV(pipeline, param_grid, cv=3, scoring=scoring, n_jobs=-1)
+    search.fit(X_train, y_train)
+    return search.best_estimator_, search.best_params_
 
 
 def build_preprocessor(X: pd.DataFrame) -> ColumnTransformer:
@@ -90,6 +96,16 @@ def _split_features_target(df: pd.DataFrame, target_col: str) -> Tuple[pd.DataFr
         TARGETS["customer_cancel"],
         TARGETS["driver_delay"],
     }
+    # Drop the target-source columns (and fare-derived leaks) so models learn real
+    # patterns instead of copying the answer.
+    forbidden |= {
+        "booking_status",
+        "booking_value",
+        "customer_cancel_flag",
+        "driver_delay_flag",
+        "fare_per_km",
+        "fare_per_min",
+    }
     X = df.drop(columns=[c for c in forbidden if c in df.columns])
     y = df[target_col]
     return X, y
@@ -107,7 +123,6 @@ def train_ride_outcome_model(df: pd.DataFrame) -> Dict:
             (
                 "model",
                 RandomForestClassifier(
-                    n_estimators=40,
                     random_state=RANDOM_STATE,
                     class_weight="balanced_subsample",
                     n_jobs=-1,
@@ -116,11 +131,18 @@ def train_ride_outcome_model(df: pd.DataFrame) -> Dict:
         ]
     )
 
-    pipeline.fit(X_train, y_train)
+    pipeline, best_params = _tune(
+        pipeline,
+        {"model__n_estimators": [3, 10, 40]},
+        X_train,
+        y_train,
+        "f1_weighted",
+    )
     preds = pipeline.predict(X_test)
     proba = pipeline.predict_proba(X_test)
 
     metrics = _classification_metrics(y_test, preds, proba)
+    metrics["best_params"] = best_params
     joblib.dump(pipeline, MODELS_DIR / "ride_outcome_model.joblib")
     return metrics
 
@@ -137,8 +159,6 @@ def train_fare_model(df: pd.DataFrame) -> Dict:
             (
                 "model",
                 RandomForestRegressor(
-                    n_estimators=60,
-                    max_depth=12,
                     random_state=RANDOM_STATE,
                     n_jobs=-1,
                 ),
@@ -146,10 +166,17 @@ def train_fare_model(df: pd.DataFrame) -> Dict:
         ]
     )
 
-    pipeline.fit(X_train, y_train)
+    pipeline, best_params = _tune(
+        pipeline,
+        {"model__n_estimators": [5, 60], "model__max_depth": [6, 12]},
+        X_train,
+        y_train,
+        "r2",
+    )
     preds = pipeline.predict(X_test)
 
     metrics = _regression_metrics(y_test, preds)
+    metrics["best_params"] = best_params
     joblib.dump(pipeline, MODELS_DIR / "fare_model.joblib")
     return metrics
 
@@ -166,7 +193,6 @@ def train_customer_cancel_model(df: pd.DataFrame) -> Dict:
             (
                 "model",
                 RandomForestClassifier(
-                    n_estimators=40,
                     random_state=RANDOM_STATE,
                     class_weight="balanced_subsample",
                     n_jobs=-1,
@@ -175,11 +201,18 @@ def train_customer_cancel_model(df: pd.DataFrame) -> Dict:
         ]
     )
 
-    pipeline.fit(X_train, y_train)
+    pipeline, best_params = _tune(
+        pipeline,
+        {"model__n_estimators": [4, 9, 40]},
+        X_train,
+        y_train,
+        "f1_weighted",
+    )
     preds = pipeline.predict(X_test)
     proba = pipeline.predict_proba(X_test)
 
     metrics = _classification_metrics(y_test, preds, proba)
+    metrics["best_params"] = best_params
     joblib.dump(pipeline, MODELS_DIR / "customer_cancel_model.joblib")
     return metrics
 
@@ -196,20 +229,26 @@ def train_driver_delay_model(df: pd.DataFrame) -> Dict:
             (
                 "model",
                 RandomForestClassifier(
-                    n_estimators=40,
                     random_state=RANDOM_STATE,
                     class_weight="balanced_subsample",
-                    n_jobs=-1,
+                    n_jobs=1,
                 ),
             ),
         ]
     )
 
-    pipeline.fit(X_train, y_train)
+    pipeline, best_params = _tune(
+        pipeline,
+        {"model__n_estimators": [6, 10, 40]},
+        X_train,
+        y_train,
+        "f1_weighted",
+    )
     preds = pipeline.predict(X_test)
     proba = pipeline.predict_proba(X_test)
 
     metrics = _classification_metrics(y_test, preds, proba)
+    metrics["best_params"] = best_params
     joblib.dump(pipeline, MODELS_DIR / "driver_delay_model.joblib")
     return metrics
 

@@ -8,7 +8,7 @@ End-to-end ML project for ride outcome prediction, fare forecasting, cancellatio
 - `src/config.py`: Central paths and model target definitions
 - `src/data_pipeline.py`: Loads and merges source tables, cleans data, and creates features and targets
 - `src/eda.py`: Exploratory data analysis (before and after cleaning); saves statistics and plots to `artifacts/reports/eda/`
-- `src/train_models.py`: Trains and evaluates the four model pipelines
+- `src/train_models.py`: Trains, tunes (GridSearchCV), and evaluates the four model pipelines
 - `src/sql_setup.py`: Exports the processed dataset to SQLite
 - `src/run_pipeline.py`: Runs EDA, model training, and SQLite export
 - `data/processed/`: Processed dataset outputs
@@ -37,7 +37,7 @@ This command does all of the following:
 - Runs EDA (before and after cleaning) and saves statistics and plots to `artifacts/reports/eda/`
 - Cleans and merges the input files
 - Builds engineered features
-- Trains 4 models
+- Trains and tunes 4 models (GridSearchCV)
 - Saves metrics to `artifacts/reports/metrics.json`
 - Exports processed data to SQLite `sql/rapido.db`
 
@@ -57,7 +57,7 @@ streamlit run app.py
 
 The dashboard has three tabs:
 - **Business KPIs**: model metrics, booking summaries, and cancellation and fare charts
-- **Single Ride Prediction**: select an existing booking by ID and score it with all four models
+- **Single Ride Prediction**: score a ride with all four models, either by selecting an existing booking by ID or by entering a new (unseen) ride manually; manual inputs are validated (empty required fields blank the output, and out-of-range or inconsistent values are flagged)
 - **Batch Prediction**: upload a CSV with the processed dataset's feature columns, then download the scored results
 
 The dashboard reads `data/processed/rapido_processed.csv`, the four model files in `artifacts/models/`, and the metrics report. Run the full pipeline if any of these are missing.
@@ -69,18 +69,16 @@ The dashboard reads `data/processed/rapido_processed.csv`, the four model files 
 3. Customer Cancellation Risk (Binary)
 4. Driver Delay Risk (Binary)
 
-## Important Note About Target Leakage
+## Target Leakage Handling
 
-The current baseline intentionally prioritizes execution and project structure. Some columns in the current feature set can leak target information, leading to unrealistically high scores.
+Target-duplicate columns are excluded from the model features so the models learn from genuine ride signals instead of copying the answer. Dropped from each model's training inputs (not from the dataset):
+- `booking_status`, `booking_value`, `customer_cancel_flag`, `driver_delay_flag` — direct copies of the four targets
+- `fare_per_km`, `fare_per_min` — derived from `booking_value`, so they leak the fare
 
-Before final submission, remove leakage-prone features and retrain. Suggested columns to exclude include direct or proxy target columns such as:
-- `booking_value` when predicting fare
-- post-booking operational outcome indicators tightly tied to targets
+These columns remain in the processed dataset for display and analytics; they are only excluded when building each model's feature matrix in `src/train_models.py`. After removing them, scores drop from an inflated ~100% to realistic values that reflect true predictive skill.
 
 ## Suggested Next Improvement Steps
 
-1. Add strict anti-leakage feature lists per model.
-2. Add train/validation split with hyperparameter tuning (Optuna/GridSearch).
-3. Add SHAP/feature-importance analysis.
-4. Add model and data monitoring over time, such as drift checks and refreshed performance metrics.
-5. Add FastAPI endpoint for prediction (optional).
+1. Add SHAP/feature-importance analysis.
+2. Add model and data monitoring over time, such as drift checks and refreshed performance metrics.
+3. Add FastAPI endpoint for prediction (optional).

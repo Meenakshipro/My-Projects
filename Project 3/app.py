@@ -380,6 +380,294 @@ def model_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
     return df.drop(columns=cols_to_drop)
 
 
+RUSH_HOURS = {8, 9, 10, 17, 18, 19, 20}
+
+
+def _feature_template(df: pd.DataFrame) -> pd.DataFrame:
+    # Neutral baseline that never borrows existing-data statistics: 0 for numeric
+    # columns and a novel "NEW" for text (ignored by the encoder). Every column is
+    # then set by user input, derivation, or explicit neutralization in build_manual_row.
+    feats = model_feature_frame(df)
+    row: dict = {}
+    for col in feats.columns:
+        row[col] = 0.0 if pd.api.types.is_numeric_dtype(feats[col]) else "NEW"
+    return pd.DataFrame([row])
+
+
+def build_manual_row(df: pd.DataFrame, overrides: dict) -> pd.DataFrame:
+    # Start from a neutral template, apply the user's inputs, then recompute the
+    # deterministic engineered fields so they stay consistent with the new values.
+    row = _feature_template(df)
+    for key, value in overrides.items():
+        if key in row.columns:
+            row.at[0, key] = value
+
+    # Blank out identity/timestamp columns so an unseen ride is not anchored to any
+    # real booking/customer/driver; OneHotEncoder(handle_unknown="ignore") maps these
+    # novel values to all-zeros, so they add no signal to the prediction.
+    novel_ids = {
+        "booking_id": "NEW_RIDE",
+        "customer_id": "NEW_CUSTOMER",
+        "driver_id": "NEW_DRIVER",
+        "booking_date": "NEW",
+        "booking_time": "NEW",
+        "booking_datetime": "NEW",
+        "booking_hourly_ts": "NEW",
+        "datetime": "NEW",
+    }
+    for col, placeholder in novel_ids.items():
+        if col in row.columns:
+            row.at[0, col] = placeholder
+
+    # These flags are near-copies of the cancel/delay targets; zero them out so an
+    # unseen ride is predicted from its attributes, not a leaked historical answer.
+    for leak_col in ("customer_cancel_flag", "driver_delay_flag"):
+        if leak_col in row.columns:
+            row.at[0, leak_col] = 0
+
+    # The driver's vehicle equals the ride's vehicle for a matched booking.
+    if "vehicle_type_driver" in row.columns and "vehicle_type" in overrides:
+        row.at[0, "vehicle_type_driver"] = overrides["vehicle_type"]
+    if "preferred_vehicle_type" in row.columns and "vehicle_type" in overrides:
+        row.at[0, "preferred_vehicle_type"] = overrides["vehicle_type"]
+
+    if "actual_ride_time_min" in row.columns and "estimated_ride_time_min" in overrides:
+        row.at[0, "actual_ride_time_min"] = overrides["estimated_ride_time_min"]
+
+    base_fare = float(row.at[0, "base_fare"]) if "base_fare" in row.columns else 0.0
+    surge = float(row.at[0, "surge_multiplier"]) if "surge_multiplier" in row.columns else 1.0
+    if "booking_value" in row.columns:
+        row.at[0, "booking_value"] = round(base_fare * surge, 2)
+    booking_value = float(row.at[0, "booking_value"]) if "booking_value" in row.columns else 0.0
+
+    dist = float(row.at[0, "ride_distance_km"]) if "ride_distance_km" in row.columns else 0.0
+    ride_time = float(row.at[0, "actual_ride_time_min"]) if "actual_ride_time_min" in row.columns else 0.0
+    if "fare_per_km" in row.columns:
+        row.at[0, "fare_per_km"] = booking_value / dist if dist else 0.0
+    if "fare_per_min" in row.columns:
+        row.at[0, "fare_per_min"] = booking_value / ride_time if ride_time else 0.0
+
+    hour = int(row.at[0, "hour_of_day"]) if "hour_of_day" in row.columns else 0
+    if "hour_of_day_time" in row.columns:
+        row.at[0, "hour_of_day_time"] = hour
+    if "rush_hour_flag" in row.columns:
+        row.at[0, "rush_hour_flag"] = 1 if hour in RUSH_HOURS else 0
+    if "peak_time_flag" in row.columns:
+        row.at[0, "peak_time_flag"] = 1 if hour in RUSH_HOURS else 0
+
+    threshold = float(df["ride_distance_km"].quantile(0.75))
+    if "long_distance_flag" in row.columns:
+        row.at[0, "long_distance_flag"] = 1 if dist >= threshold else 0
+
+    # Keep the weekday mirrors and weekend flags consistent with the chosen day.
+    if "day_of_week" in overrides:
+        day = str(overrides["day_of_week"])
+        weekend = 1 if day in {"Saturday", "Sunday"} else 0
+        for day_col in ("day_of_week", "day_of_week_time"):
+            if day_col in row.columns:
+                row.at[0, day_col] = day
+        for wk_col in ("is_weekend", "is_weekend_time"):
+            if wk_col in row.columns:
+                row.at[0, wk_col] = weekend
+
+    if "city_pair" in row.columns:
+        row.at[0, "city_pair"] = f'{row.at[0, "pickup_location"]}__{row.at[0, "drop_location"]}'
+
+    # Recompute composite scores from the entered components (same formula as the
+    # pipeline) so they reflect the user's ride, not the template baseline.
+    if "driver_reliability_score" in row.columns:
+        acc = float(row.at[0, "acceptance_rate"]) if "acceptance_rate" in row.columns else 0.0
+        dly = float(row.at[0, "delay_rate"]) if "delay_rate" in row.columns else 0.0
+        drt = float(row.at[0, "avg_driver_rating"]) if "avg_driver_rating" in row.columns else 0.0
+        row.at[0, "driver_reliability_score"] = 0.4 * acc + 0.4 * (1 - dly) + 0.2 * (drt / 5)
+    if "customer_loyalty_score" in row.columns:
+        tb = float(row.at[0, "total_bookings"]) if "total_bookings" in row.columns else 0.0
+        max_tb = float(df["total_bookings"].max()) or 1.0
+        crt = float(row.at[0, "cancellation_rate"]) if "cancellation_rate" in row.columns else 0.0
+        crg = float(row.at[0, "avg_customer_rating"]) if "avg_customer_rating" in row.columns else 0.0
+        row.at[0, "customer_loyalty_score"] = 0.4 * (tb / max_tb) + 0.4 * (1 - crt) + 0.2 * (crg / 5)
+
+    # Derive customer ride counts from the entered totals/rates so nothing is borrowed.
+    tot_bk = float(row.at[0, "total_bookings"]) if "total_bookings" in row.columns else 0.0
+    crate = float(row.at[0, "cancellation_rate"]) if "cancellation_rate" in row.columns else 0.0
+    cancelled = round(tot_bk * crate)
+    if "cancelled_rides" in row.columns:
+        row.at[0, "cancelled_rides"] = cancelled
+    if "incomplete_rides" in row.columns:
+        row.at[0, "incomplete_rides"] = 0
+    if "completed_rides" in row.columns:
+        row.at[0, "completed_rides"] = max(int(tot_bk) - cancelled, 0)
+
+    # Mirror the home city and demand surge onto the user's choices.
+    for city_col in ("customer_city", "driver_city"):
+        if city_col in row.columns and "city" in overrides:
+            row.at[0, city_col] = overrides["city"]
+    if "avg_surge_multiplier" in row.columns and "surge_multiplier" in overrides:
+        row.at[0, "avg_surge_multiplier"] = overrides["surge_multiplier"]
+
+    # Neutralize only the leaked/identity columns (median imputation would reintroduce
+    # the ride-outcome answer or a real entity, so these must stay novel/zero).
+    neutral = {
+        "booking_status": "NEW",
+        "incomplete_ride_reason": "None",
+    }
+    for col, val in neutral.items():
+        if col in row.columns:
+            row.at[0, col] = val
+
+    # Unprovided-but-legit aggregates the user cannot know: set to 0 so the prediction
+    # rests on user inputs only, never on existing-data statistics.
+    zero_fill = (
+        "total_assigned_rides",
+        "accepted_rides",
+        "incomplete_rides_driver",
+        "delay_count",
+        "avg_pickup_delay_min",
+        "total_requests",
+        "completed_rides_demand",
+        "cancelled_rides_demand",
+    )
+    for col in zero_fill:
+        if col in row.columns:
+            row.at[0, col] = 0
+
+    return row
+
+
+def render_manual_inputs(df: pd.DataFrame) -> dict:
+    # Collect the human-known fields for an unseen ride; the rest come from the template.
+    def opts(col: str) -> list:
+        return sorted(df[col].dropna().astype(str).unique().tolist()) if col in df.columns else []
+
+    overrides: dict = {}
+    st.markdown("**Trip details**")
+    t1, t2, t3 = st.columns(3)
+    overrides["city"] = t1.text_input("City", value="")
+    overrides["pickup_location"] = t2.text_input("Pickup location", value="")
+    overrides["drop_location"] = t3.text_input("Drop location", value="")
+
+    t4, t5, t6 = st.columns(3)
+    overrides["vehicle_type"] = t4.selectbox("Vehicle type", opts("vehicle_type"))
+    overrides["ride_distance_km"] = t5.number_input(
+        "Ride distance (km)", min_value=0.1, value=5.0, step=0.5
+    )
+    overrides["estimated_ride_time_min"] = t6.number_input(
+        "Ride time (min)", min_value=1.0, value=20.0, step=1.0
+    )
+
+    t7, t8, t9 = st.columns(3)
+    overrides["hour_of_day"] = t7.slider("Hour of day", 0, 23, 12)
+    overrides["traffic_level"] = t8.selectbox("Traffic level", opts("traffic_level"))
+    overrides["weather_condition"] = t9.selectbox("Weather", opts("weather_condition"))
+
+    st.markdown("**Pricing**")
+    p1, p2 = st.columns(2)
+    overrides["base_fare"] = p1.number_input(
+        "Base fare (₹)", min_value=0.0, value=100.0, step=5.0
+    )
+    overrides["surge_multiplier"] = p2.number_input(
+        "Surge multiplier", min_value=1.0, max_value=5.0, value=1.0, step=0.1
+    )
+
+    st.markdown("**Customer & driver history** (drives cancel / delay risk)")
+    d1, d2, d3 = st.columns(3)
+    overrides["customer_age"] = d1.number_input("Customer age", min_value=16, max_value=90, value=30)
+    overrides["cancellation_rate"] = d2.slider("Customer cancel rate", 0.0, 1.0, 0.1)
+    overrides["avg_customer_rating"] = d3.slider("Customer rating", 1.0, 5.0, 4.0)
+
+    d4, d5, d6 = st.columns(3)
+    overrides["acceptance_rate"] = d4.slider("Driver acceptance rate", 0.0, 1.0, 0.9)
+    overrides["delay_rate"] = d5.slider("Driver delay rate", 0.0, 1.0, 0.1)
+    overrides["avg_driver_rating"] = d6.slider("Driver rating", 1.0, 5.0, 4.0)
+
+    with st.expander("Advanced inputs (optional)"):
+        a1, a2, a3 = st.columns(3)
+        overrides["driver_experience_years"] = a1.number_input(
+            "Driver experience (years)", min_value=0, max_value=50, value=5
+        )
+        overrides["avg_wait_time_min"] = a2.number_input(
+            "Avg wait time (min)", min_value=0.0, value=10.0, step=1.0
+        )
+        overrides["total_bookings"] = a3.number_input(
+            "Customer total bookings", min_value=0, value=10
+        )
+
+        a4, a5, a6 = st.columns(3)
+        overrides["customer_signup_days_ago"] = a4.number_input(
+            "Customer signup (days ago)", min_value=0, value=180
+        )
+        overrides["demand_level"] = a5.selectbox("Demand level", opts("demand_level"))
+        overrides["driver_age"] = a6.number_input(
+            "Driver age", min_value=18, max_value=75, value=35
+        )
+
+        a7, a8, a9 = st.columns(3)
+        overrides["day_of_week"] = a7.selectbox("Day of week", opts("day_of_week"))
+        overrides["season"] = a8.selectbox("Season", opts("season"))
+        overrides["is_holiday"] = 1 if a9.checkbox("Holiday") else 0
+
+        a10, _, _ = st.columns(3)
+        overrides["customer_gender"] = a10.selectbox("Customer gender", opts("customer_gender"))
+
+    return overrides
+
+
+def validate_manual_inputs(df: pd.DataFrame, ov: dict) -> list[str]:
+    # Compare each entry against the existing-data categories/ranges and flag entries
+    # that are empty, mistyped, out-of-range, unseen, or mutually inconsistent.
+    issues: list[str] = []
+
+    def known(col: str) -> set:
+        return set(df[col].dropna().astype(str)) if col in df.columns else set()
+
+    for col, label in (("city", "City"), ("pickup_location", "Pickup location"), ("drop_location", "Drop location")):
+        val = str(ov.get(col, "")).strip()
+        if not val:
+            continue  # empty required fields blank the output instead of warning
+        if not any(ch.isalpha() for ch in val):
+            issues.append(f"⚠️ {label} '{val}' isn't a valid place name (needs letters).")
+        elif val not in known(col):
+            issues.append(f"ℹ️ {label} '{val}' is new — treated as an unknown location.")
+
+    pickup = str(ov.get("pickup_location", "")).strip()
+    drop = str(ov.get("drop_location", "")).strip()
+    if pickup and drop and pickup == drop:
+        issues.append("⚠️ Pickup and drop are the same location.")
+
+    for col, label in (
+        ("ride_distance_km", "Ride distance"),
+        ("estimated_ride_time_min", "Ride time"),
+        ("base_fare", "Base fare"),
+    ):
+        if col in ov and col in df.columns:
+            lo, hi = float(df[col].min()), float(df[col].max())
+            v = float(ov[col])
+            if v < lo or v > hi:
+                issues.append(f"⚠️ {label} {v:g} is outside the data range [{lo:g}–{hi:g}] — may be unreliable.")
+
+    if ov.get("avg_customer_rating", 0) >= 4.5 and ov.get("cancellation_rate", 0) >= 0.5:
+        issues.append("⚠️ High customer rating with a high cancel rate is inconsistent.")
+    if ov.get("avg_driver_rating", 0) >= 4.5 and ov.get("delay_rate", 0) >= 0.5:
+        issues.append("⚠️ High driver rating with a high delay rate is inconsistent.")
+
+    return issues
+
+
+REQUIRED_FIELDS = {"city": "City", "pickup_location": "Pickup location", "drop_location": "Drop location"}
+
+
+def missing_required_fields(ov: dict) -> list[str]:
+    return [label for col, label in REQUIRED_FIELDS.items() if not str(ov.get(col, "")).strip()]
+
+
+def blank_prediction_cards() -> None:
+    labels = ["Ride Outcome", "Predicted Fare", "Customer Cancel Risk", "Driver Delay Risk"]
+    cards = "".join(
+        f'<div class="pred-card"><p class="pred-lbl">{lbl}</p><p class="pred-val">—</p></div>' for lbl in labels
+    )
+    st.markdown(f'<div class="pred-grid">{cards}</div>', unsafe_allow_html=True)
+
+
 def section_header(icon: str, title: str, eyebrow: str, gradient: str = "g1", live: bool = False) -> None:
     live_html = '<div class="sec-live"><span class="pulse"></span>Live</div>' if live else ""
     st.markdown(
@@ -602,20 +890,40 @@ def main() -> None:
     with tab2:
         tab_banner("🎯", "Single Ride Prediction", "Score any historical booking across all four models instantly", "m2")
         section_header("🎯", "Single Ride Prediction", "Booking-Level Intelligence", "g1")
-        booking_id = st.selectbox("Select Booking ID", options=df["booking_id"].astype(str).tolist()[:5000])
-        row = df.loc[df["booking_id"].astype(str) == booking_id].head(1)
-        row_features = model_feature_frame(row)
+
+        mode = st.radio(
+            "Input source",
+            ["📁 Existing booking", "✍️ Manual entry (new ride)"],
+            horizontal=True,
+        )
+
+        if mode == "📁 Existing booking":
+            booking_id = st.selectbox("Select Booking ID", options=df["booking_id"].astype(str).tolist()[:5000])
+            row = df.loc[df["booking_id"].astype(str) == booking_id].head(1)
+            row_features = model_feature_frame(row)
+            missing = []
+        else:
+            overrides = render_manual_inputs(df)
+            missing = missing_required_fields(overrides)
+            for msg in validate_manual_inputs(df, overrides):
+                (st.info if msg.startswith("ℹ️") else st.warning)(msg)
+            row = build_manual_row(df, overrides)
+            row_features = row
 
         if st.button("Run Predictions", type="primary"):
-            ride_outcome = models["ride_outcome"].predict(row_features)[0]
-            fare_pred = float(models["fare"].predict(row_features)[0])
-            cust_prob = float(models["customer_cancel"].predict_proba(row_features)[:, 1][0])
-            driver_prob = float(models["driver_delay"].predict_proba(row_features)[:, 1][0])
+            if missing:
+                st.info("Fill required field(s) to see predictions: " + ", ".join(missing) + ".")
+                blank_prediction_cards()
+            else:
+                ride_outcome = models["ride_outcome"].predict(row_features)[0]
+                fare_pred = float(models["fare"].predict(row_features)[0])
+                cust_prob = float(models["customer_cancel"].predict_proba(row_features)[:, 1][0])
+                driver_prob = float(models["driver_delay"].predict_proba(row_features)[:, 1][0])
 
-            prediction_cards(str(ride_outcome), fare_pred, cust_prob, driver_prob)
+                prediction_cards(str(ride_outcome), fare_pred, cust_prob, driver_prob)
 
-            with st.expander("View full booking record"):
-                st.dataframe(row.T.astype(str), width='stretch')
+                with st.expander("View full booking record"):
+                    st.dataframe(row.T.astype(str), width='stretch')
 
     with tab3:
         tab_banner("📦", "Batch Prediction", "Upload a CSV and score thousands of rides in one pass", "m3")
